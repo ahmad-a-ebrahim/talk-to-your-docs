@@ -1,0 +1,27 @@
+{
+  "name": "talk-to-your-docs",
+  "private": true,
+  "description": "Multi-tenant RAG platform: upload documents, chat with them, get cited answers.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev:api": "npm run dev -w @ttyd/api",
+    "dev:web": "npm run dev -w @ttyd/web",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:generate": "npm run generate -w @ttyd/db",
+    "db:migrate": "npm run migrate -w @ttyd/db",
+    "db:smoke": "npm run smoke -w @ttyd/db",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  }
+}
