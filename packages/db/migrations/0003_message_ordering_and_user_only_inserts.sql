@@ -1,0 +1,2 @@
+ALTER TABLE "messages" ALTER COLUMN "created_at" SET DEFAULT clock_timestamp();--> statement-breakpoint
+ALTER POLICY "messages_insert_own" ON "messages" TO authenticated WITH CHECK ("messages"."user_id" = (select auth.uid()) and "messages"."role" = 'user');

@@ -6,7 +6,19 @@ import * as schema from './schema';
 export type DbOptions = {
   /** Max pooled connections. Supabase's free-tier pooler allows few, so keep this modest. */
   maxConnections?: number;
+  /**
+   * TLS mode. Default: `'require'` unless the URL carries its own `?sslmode=...`, which wins.
+   * Pass `false` only for a local or CI Postgres without TLS (e.g. `postgresql://localhost/test`).
+   */
+  ssl?: 'require' | false;
 };
+
+/** An explicit option wins, then the URL's own `sslmode`, then the secure default. */
+function sslOption(databaseUrl: string, ssl: DbOptions['ssl']): { ssl?: 'require' | false } {
+  if (ssl !== undefined) return { ssl };
+  if (new URL(databaseUrl).searchParams.has('sslmode')) return {};
+  return { ssl: 'require' };
+}
 
 /**
  * Creates a Drizzle client. Nothing connects at import time: the caller (API, scripts) owns the URL,
@@ -22,9 +34,11 @@ export function createDb(databaseUrl: string, options: DbOptions = {}) {
     // statement prepared on one connection may be missing on the next. Per-request state is already
     // transaction-local (see withUserContext), so this is the only change the pooler needs.
     prepare: false,
+    // Fail fast instead of hanging for postgres.js's 30s default when the pooler accepts TCP but stalls.
+    connect_timeout: 10,
     // Never send credentials or documents over the internet unencrypted. 'require' encrypts but doesn't
     // verify the server certificate; pinning Supabase's CA is on the hardening list.
-    ssl: 'require',
+    ...sslOption(databaseUrl, options.ssl),
   });
   const db = drizzle(client, { schema });
   return {

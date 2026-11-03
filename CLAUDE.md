@@ -62,9 +62,29 @@ From the repo root:
 - Migrations: never edit an applied migration. Extensions, triggers, functions and grants go in custom migrations
   (`npx drizzle-kit generate --custom --name=<name>` inside `packages/db`).
 - Secrets live only in the repo-root `.env` (git-ignored). Keep `.env.example` current. Validate env with zod at startup.
+- Ahmad is learning Node.js, Express, advanced Supabase and RAG through this project. Name and briefly explain the
+  concept behind each piece of code you write (short, example-first, using the repo's own code).
 - ESM everywhere, strict TypeScript, Prettier formatting. Match existing comment style: explain _why_, not _what_.
 
 ## Notes for later milestones
+
+- **M7 launch:** Supabase's Data API (auto REST on `public`) is left exposed on purpose for the training phase;
+  grants + RLS keep it safe, but it bypasses Express limits. Revisit before any public launch (remove `public`
+  from exposed schemas in the dashboard).
+
+- **M2 API design:** route handlers must never receive the raw `db` (admin, bypasses RLS). Middleware verifies the
+  JWT and exposes only a user-scoped runner built on `withUserContext`.
+- **M2 Storage cleanup:** deleting a user or document cascades DB rows but NOT files in Supabase Storage.
+- **M4 assistant messages:** users can only insert `role = 'user'` messages (RLS), and a trigger blanks
+  `cited_chunk_ids`/`created_at` on user writes. The assistant's answer + citations are written by the server
+  through one narrow privileged function (raw `db`, never exposed to route handlers), not via `withUserContext`.
+- **M5 UI:** deleting a document also deletes chats scoped to it (intentional, see schema comment). Confirm
+  with the user before deleting.
+- **Server-managed columns:** `guard_user_writes` trigger overwrites them when the writer is `authenticated`; users
+  may update only `conversations.title`. Sort messages by `created_at` (uses `clock_timestamp()`, so one
+  transaction's rows still order correctly). New message inserts bump `conversations.updated_at` (trigger).
+- **Slow networks:** Ahmad's connection to the pooler can take 5–20s to connect cold. `connect_timeout` is 10s and
+  readiness is 2s, so the first probes may 503 until the startup warm-up connection is up. Not a bug.
 
 - **M3 chunking:** gte-small truncates input beyond 512 tokens _of its own tokenizer_. Target ~300–400 tokens per
   chunk (not 500) so nothing is silently dropped from the embedding.
@@ -75,6 +95,7 @@ From the repo root:
 - **M4 retrieval:** with RLS/user filtering, HNSW can return fewer than k rows. The project has pgvector 0.8.x,
   so use `set local hnsw.iterative_scan = relaxed_order` inside the search transaction.
 - **M6 hardening:** upgrade DB SSL from `require` (encrypted) to certificate verification with Supabase's CA cert.
+  Give the API its own limited Postgres role instead of `postgres`. Replace `console` with structured logging.
   Supabase also has an `ensure_rls` event trigger that auto-enables RLS on new `public` tables (safety net, not a substitute).
 - **M5 frontend:** follow `apps/web/AGENTS.md`. This Next.js version (16.x) has breaking changes; read the docs
   bundled in `node_modules/next/dist/docs/` before writing Next code.

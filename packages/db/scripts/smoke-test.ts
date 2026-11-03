@@ -13,6 +13,7 @@ import {
   createDb,
   documents,
   EMBEDDING_DIMENSIONS,
+  messages,
   withUserContext,
 } from '../src';
 
@@ -318,7 +319,116 @@ async function main() {
       after,
     );
 
-    console.log('\n7. Database-maintained fields and cascades');
+    console.log('\n7. Chats: forged fields, message order, activity, and what users may edit');
+    const forgedDoc = one(
+      await withUserContext(db, userA, (tx) =>
+        tx
+          .insert(documents)
+          .values({
+            userId: userA,
+            filename: 'forged.txt',
+            fileType: 'txt',
+            fileSizeBytes: 1,
+            storagePath: `${userA}/forged.txt`,
+            errorMessage: 'forged',
+            createdAt: new Date('2000-01-01'),
+          })
+          .returning({ errorMessage: documents.errorMessage, createdAt: documents.createdAt }),
+      ),
+    );
+    check(
+      forgedDoc.errorMessage === null && forgedDoc.createdAt.getFullYear() > 2020,
+      'server-managed document fields (error_message, created_at) are overwritten, not trusted',
+      forgedDoc,
+    );
+
+    const conversation = one(
+      await withUserContext(db, userA, (tx) =>
+        tx.insert(conversations).values({ userId: userA }).returning(),
+      ),
+    );
+    const [first, second] = await withUserContext(db, userA, async (tx) => {
+      // Two messages in ONE transaction, like the question + answer the API will save together.
+      const q1 = one(
+        await tx
+          .insert(messages)
+          .values({
+            conversationId: conversation.id,
+            userId: userA,
+            role: 'user',
+            content: 'q1',
+            citedChunkIds: [randomUUID()],
+            createdAt: new Date('2000-01-01'),
+          })
+          .returning(),
+      );
+      const q2 = one(
+        await tx
+          .insert(messages)
+          .values({
+            conversationId: conversation.id,
+            userId: userA,
+            role: 'user',
+            content: 'q2',
+          })
+          .returning(),
+      );
+      return [q1, q2] as const;
+    });
+    check(
+      second.createdAt.getTime() > first.createdAt.getTime(),
+      'two messages saved in one transaction get strictly increasing created_at (stable order)',
+      { first: first.createdAt, second: second.createdAt },
+    );
+    check(
+      first.citedChunkIds.length === 0 && first.createdAt.getFullYear() > 2020,
+      'a user can’t forge citations or backdate a message',
+      first,
+    );
+    await expectRejected(
+      'A writes a message as the assistant',
+      PG_ERROR.insufficientPrivilege,
+      () =>
+        withUserContext(db, userA, (tx) =>
+          tx.insert(messages).values({
+            conversationId: conversation.id,
+            userId: userA,
+            role: 'assistant',
+            content: 'forged answer',
+          }),
+        ),
+    );
+
+    const [touched] = await db
+      .select({ updatedAt: conversations.updatedAt })
+      .from(conversations)
+      .where(eq(conversations.id, conversation.id));
+    check(
+      touched !== undefined && touched.updatedAt.getTime() > conversation.updatedAt.getTime(),
+      'adding a message moves the conversation’s updated_at (trigger)',
+    );
+
+    const renamed = await withUserContext(db, userA, (tx) =>
+      tx
+        .update(conversations)
+        .set({ title: 'Renamed' })
+        .where(eq(conversations.id, conversation.id))
+        .returning({ title: conversations.title }),
+    );
+    check(renamed[0]?.title === 'Renamed', 'A can rename its conversation');
+    await expectRejected(
+      'A edits a conversation’s created_at',
+      PG_ERROR.insufficientPrivilege,
+      () =>
+        withUserContext(db, userA, (tx) =>
+          tx
+            .update(conversations)
+            .set({ createdAt: new Date('2000-01-01') })
+            .where(eq(conversations.id, conversation.id)),
+        ),
+    );
+
+    console.log('\n8. Database-maintained fields and cascades');
     const updated = one(
       await db
         .update(documents)
@@ -331,12 +441,21 @@ async function main() {
       'updated_at moves forward on update (trigger, no app code involved)',
     );
 
+    // Intentional: a chat scoped to a document goes with it, because its citations would point at deleted chunks.
+    const scopedChat = one(
+      await db.insert(conversations).values({ userId: userA, documentId: docA.id }).returning(),
+    );
     await db.delete(documents).where(eq(documents.id, docA.id));
     const orphans = await db
       .select({ id: chunks.id })
       .from(chunks)
       .where(eq(chunks.documentId, docA.id));
     check(orphans.length === 0, 'deleting a document removes its chunks');
+    const goneChats = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.id, scopedChat.id));
+    check(goneChats.length === 0, 'deleting a document removes chats scoped to it (intentional)');
   } finally {
     try {
       await db.execute(sql`delete from auth.users where id in (${userA}::uuid, ${userB}::uuid)`);

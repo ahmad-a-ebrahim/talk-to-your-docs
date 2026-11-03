@@ -22,6 +22,20 @@
       "when": 1793621528332,
       "tag": "0002_updated_at_triggers_and_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793725714001,
+      "tag": "0003_message_ordering_and_user_only_inserts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793725734918,
+      "tag": "0004_conversation_touch_and_write_guards",
+      "breakpoints": true
     }
   ]
 }
