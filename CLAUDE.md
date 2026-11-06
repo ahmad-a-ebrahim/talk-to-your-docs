@@ -64,6 +64,8 @@ From the repo root:
 - Secrets live only in the repo-root `.env` (git-ignored). Keep `.env.example` current. Validate env with zod at startup.
 - Ahmad is learning Node.js, Express, advanced Supabase and RAG through this project. Name and briefly explain the
   concept behind each piece of code you write (short, example-first, using the repo's own code).
+- **Keep `README.md` current.** It is the project status page: update milestone status, roadmap checkboxes,
+  scripts, data model and limitations in the same commit as any change that affects them.
 - ESM everywhere, strict TypeScript, Prettier formatting. Match existing comment style: explain _why_, not _what_.
 
 ## Notes for later milestones
